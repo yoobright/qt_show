@@ -159,10 +159,10 @@ class ImageWidget(QFrame):
         self.setLayout(layout)
         self.setStyleSheet('''
         QLabel {
-        border-top: 1px solid rgb(200, 200, 200, 180);
-        border-left: 1px solid rgb(200, 200, 200, 180);
-        border-right: 1px solid rgb(0, 0, 0, 100);
-        border-bottom: 1px solid rgb(0, 0, 0, 100);
+        border-top: 2px solid rgb(255, 255, 255, 180);
+        border-left: 2px solid rgb(255, 255, 255, 180);
+        border-right: 2px solid rgb(255, 255, 255, 180);
+        border-bottom: 2px solid rgb(255, 255, 255, 180);
         border-radius: 6px
         }
         ''')
@@ -459,7 +459,7 @@ class WelcomeWidget(MovableFrame):
         self.setGraphicsEffect(effect)
 
         self.animation = QPropertyAnimation(self, b'size')
-        self.animation.setDuration(300)
+        self.animation.setDuration(200)
         self.animation.setStartValue(QSize(20, 20))
         self.animation.setEndValue(QSize(self.default_width,
                                          self.default_height))
@@ -516,8 +516,10 @@ class WelcomeWidget(MovableFrame):
             self.detect_activate = False
             detect_data = self.detect_queue.get()
             logger.debug('detect_data: {}'.format(detect_data))
-            self.infoLabel = detect_data[0]
-            if detect_data[1] is not None:
+            self.infoLabel.setText(detect_data[0])
+            if detect_data[1] is None:
+                self.image.pixmap = None
+            else:
                 self.image.pixmap = QPixmap(detect_data[1])
             self.show()
             self.animation.start()
@@ -526,7 +528,6 @@ class WelcomeWidget(MovableFrame):
         QTimer.singleShot(1500, self.after_action)
 
     def after_action(self):
-        print('after action')
         self.hide()
         QTimer.singleShot(1000, self.after_hide)
 
