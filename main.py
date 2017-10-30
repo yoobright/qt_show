@@ -5,6 +5,7 @@ from __future__ import print_function
 import sys
 import os
 import time
+import queue
 import cv2
 import traceback
 import logging
@@ -166,8 +167,9 @@ class ImageWidget(QFrame):
         }
         ''')
 
-    def resizeEvent(self, event):
+    def paintEvent(self, event):
         self.updateImage()
+        super(ImageWidget, self).paintEvent(event)
 
     def updateImage(self):
         if self.pixmap:
@@ -375,7 +377,7 @@ class TableWidget(MovableFrame):
                 else:
                     item.setBackground(QColor(193, 108, 91, 200))
                 self.table.setItem(i, j, item)
-        # .setBackgroundColor(Qt.red);
+
         self.table.horizontalHeader().setStyleSheet(
             '''
             QHeaderView::section{
@@ -389,7 +391,8 @@ class TableWidget(MovableFrame):
 
     def getAccessNum(self):
         # TODO: add update Access fun
-        return '2'
+        num = 2
+        return num
 
     def updateAccessNum(self):
         num = self.getAccessNum()
@@ -398,7 +401,8 @@ class TableWidget(MovableFrame):
 
     def getTableData(self):
         # TODO: add update table data fun
-        return [['test1', '00:00:00'], ['test2', '00:00:00']]
+        data = [['test1', '00:00:00'], ['test2', '00:00:00']]
+        return data
 
     def updateTable(self):
         table_data = self.getTableData()
@@ -420,8 +424,13 @@ class TableWidget(MovableFrame):
 
 
 class WelcomeWidget(MovableFrame):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, width=400, height=300):
         super(WelcomeWidget, self).__init__(parent)
+        self.default_width = width
+        self.default_height = height
+        self.detect_activate = True
+        self.detect_queue = queue.Queue(10)
+
         layout = QVBoxLayout()
         self.setObjectName('top')
         self.camLabel = QLabel()
@@ -441,13 +450,25 @@ class WelcomeWidget(MovableFrame):
         layout.addStretch()
         layout.addWidget(self.welcomeLabel)
         layout.addStretch()
-        self.resize(400, 300)
+        self.resize(self.default_height, self.default_height)
         self.setLayout(layout)
+
+        effect = QGraphicsDropShadowEffect()
+        effect.setOffset(0, 0)
+        effect.setBlurRadius(30)
+        self.setGraphicsEffect(effect)
+
+        self.animation = QPropertyAnimation(self, b'size')
+        self.animation.setDuration(300)
+        self.animation.setStartValue(QSize(20, 20))
+        self.animation.setEndValue(QSize(self.default_width,
+                                         self.default_height))
 
         self.timer = QTimer()
         self.timer.setInterval(1000)
         self.start_timer()
         self.timer.timeout.connect(self.updateState)
+        self.animation.finished.connect(self.after_animation)
 
         self.setStyleSheet(
             '''
@@ -483,9 +504,34 @@ class WelcomeWidget(MovableFrame):
         logger.debug('{}: stop timer'.format(self.__class__))
         self.timer.stop()
 
+    def updateDetection(self):
+         # TODO: modify update detection fun
+        if self.detect_activate:
+            self.detect_queue.put(['test 20岁', None])
+
     def updateState(self):
-        # TODO: add update state fun
-        pass
+        self.updateDetection()
+        logger.debug('detect_activate: {}'.format(self.detect_activate))
+        if not self.detect_queue.empty():
+            self.detect_activate = False
+            detect_data = self.detect_queue.get()
+            logger.debug('detect_data: {}'.format(detect_data))
+            self.infoLabel = detect_data[0]
+            if detect_data[1] is not None:
+                self.image.pixmap = QPixmap(detect_data[1])
+            self.show()
+            self.animation.start()
+
+    def after_animation(self):
+        QTimer.singleShot(1500, self.after_action)
+
+    def after_action(self):
+        print('after action')
+        self.hide()
+        QTimer.singleShot(1000, self.after_hide)
+
+    def after_hide(self):
+        self.detect_activate = True
 
 
 class WindowMixin(object):
@@ -520,12 +566,12 @@ class MainWindow(QMainWindow, WindowMixin):
         self.datetime = DatetimeWidget(self)
         self.table = TableWidget(self)
         self.welcome = WelcomeWidget(self)
-        self.welcome.hide()
+        self.welcome.close()
         self.notice.move(25, 200)
         self.datetime.move(580, 235)
         self.table.move(260, 100)
         self.videoTimer = QTimer()
-        self.videoTimer.setInterval(30)
+        self.videoTimer.setInterval(40)
         self.start_timer()
 
         self.videoTimer.timeout.connect(self.updateCamera)
@@ -538,16 +584,12 @@ class MainWindow(QMainWindow, WindowMixin):
         logger.debug('{}: stop timer'.format(self.__class__))
         self.videoTimer.stop()
 
-
     def updateCamera(self):
         b, frame = videoCapture.read()
         if frame is not None:
             qImg = np2qimage(frame, mode='bgr')
             self.pixmap = QPixmap(qImg)
             self.update()
-        off_set = self.offsetToCenter(
-                self.welcome.width(), self.welcome.height(), scale=False)
-        self.welcome.move(off_set.x(), off_set.y() )
 
     def paintEvent(self, ev):
         if self.isEnabled():
@@ -565,11 +607,17 @@ class MainWindow(QMainWindow, WindowMixin):
             p.scale(scale, scale)
             p.translate(self.offsetToCenter(
                 self.pixmap.width(), self.pixmap.height()))
-            # print(self.pixmap)
             p.drawPixmap(0, 0, self.pixmap)
             p.end()
 
+            off_set = self.offsetToCenter(
+                self.welcome.width(), self.welcome.height(), scale=False)
+            self.welcome.move(int(off_set.x()), int(off_set.y()))
+
     def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if isinstance(focused_widget, QTextEdit):
+            focused_widget.clearFocus()
         super(MainWindow, self).mousePressEvent(event)
 
     def offsetToCenter(self, width, height, scale=True):
